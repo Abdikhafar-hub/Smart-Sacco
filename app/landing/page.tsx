@@ -115,90 +115,21 @@ function AnimatedCounter({
 
 // Dashboard Video Component
 function DashboardVideo() {
-  const [videoError, setVideoError] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-
-  const handleVideoError = () => {
-    setVideoError(true)
-  }
-
-  const handleVideoLoad = () => {
-    setIsLoaded(true)
-  }
-
-  // Fallback dashboard mockup component
-  const FallbackDashboard = () => (
-    <div className="bg-white rounded-xl p-6 shadow-2xl">
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="p-2 bg-sacco-blue rounded-lg">
-          <Building2 className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-gray-900">SaccoSmart Dashboard</h3>
-          <p className="text-sm text-gray-600">Member Portal</p>
-        </div>
-      </div>
-      <div className="space-y-4">
-        <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-          <span className="text-sm font-medium">Total Savings</span>
-          <span className="font-bold text-green-600">KES 45,000</span>
-        </div>
-        <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-          <span className="text-sm font-medium">Active Loan</span>
-          <span className="font-bold text-blue-600">KES 25,000</span>
-        </div>
-        <Button className="w-full bg-sacco-blue hover:bg-sacco-blue/90">
-          <CreditCard className="h-4 w-4 mr-2" />
-          Make Contribution
-        </Button>
-      </div>
-    </div>
-  )
-
   return (
     <div className="relative">
       <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
-        {!videoError ? (
-          <div className="relative">
-            <video
-              ref={videoRef}
-              className={`w-full h-auto rounded-xl shadow-2xl transition-opacity duration-1000 ${
-                isLoaded ? "opacity-100" : "opacity-0"
-              }`}
-              autoPlay
-              loop
-              muted
-              playsInline
-              onError={handleVideoError}
-              onLoadedData={handleVideoLoad}
-              style={{
-                maxWidth: "100%",
-                height: "auto",
-                aspectRatio: "16/10",
-              }}
-            >
-              <source src="/sacco-dashboard-demo.mp4" type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
-
-            {/* Loading overlay */}
-            {!isLoaded && (
-              <div className="absolute inset-0 bg-white rounded-xl shadow-2xl flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sacco-blue"></div>
-              </div>
-            )}
-
-            {/* Fallback overlay if video fails to load */}
-            {!isLoaded && (
-              <div className="absolute inset-0 opacity-0">
-                <FallbackDashboard />
-              </div>
-            )}
-          </div>
-        ) : (
-          <FallbackDashboard />
-        )}
+        <div className="relative">
+          <img
+            src="https://res.cloudinary.com/ddkkfumkl/image/upload/v1748623932/Screenshot_from_2025-05-30_19-50-20_fk2oe2.png"
+            alt="SaccoSmart Dashboard"
+            className="w-full h-auto rounded-xl shadow-2xl"
+            style={{
+              maxWidth: "100%",
+              height: "auto",
+              aspectRatio: "16/10",
+            }}
+          />
+        </div>
       </div>
     </div>
   )
