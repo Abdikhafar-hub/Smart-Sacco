@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { DataTable } from "@/components/ui/data-table"
 import { Mail, Phone, MapPin, MessageSquare, Clock, User } from "lucide-react"
+import axios from "axios"
 
 export default function AdminSupportPage() {
   const [feedbackForm, setFeedbackForm] = useState({
@@ -21,43 +22,52 @@ export default function AdminSupportPage() {
     priority: "",
     description: "",
   })
+  const [tickets, setTickets] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [reply, setReply] = useState("")
+  const [replyingTicketId, setReplyingTicketId] = useState<string | null>(null)
 
-  // Mock data for support tickets
-  const supportTickets = [
-    {
-      id: "TKT-001",
-      title: "Unable to access loan application",
-      user: "John Doe",
-      email: "john@example.com",
-      category: "Technical",
-      priority: "High",
-      status: "Open",
-      dateSubmitted: "2024-01-15",
-      description: "Cannot access the loan application form after login",
-    },
-    {
-      id: "TKT-002",
-      title: "Contribution payment not reflecting",
-      user: "Jane Smith",
-      email: "jane@example.com",
-      category: "Payment",
-      priority: "Medium",
-      status: "In Progress",
-      dateSubmitted: "2024-01-14",
-      description: "Made a contribution payment but it's not showing in my account",
-    },
-    {
-      id: "TKT-003",
-      title: "Request for account statement",
-      user: "Mike Johnson",
-      email: "mike@example.com",
-      category: "General",
-      priority: "Low",
-      status: "Resolved",
-      dateSubmitted: "2024-01-13",
-      description: "Need a detailed account statement for the last 6 months",
-    },
-  ]
+  // Fetch all tickets
+  useEffect(() => {
+    const fetchTickets = async () => {
+      setLoading(true)
+      setError("")
+      try {
+        const token = localStorage.getItem("token")
+        const res = await axios.get("http://localhost:5000/api/support", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setTickets(res.data)
+      } catch (err) {
+        setError("Failed to load tickets")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchTickets()
+  }, [])
+
+  // Admin reply to ticket
+  const handleReply = async (ticketId: string) => {
+    try {
+      const token = localStorage.getItem("token")
+      await axios.post(
+        `http://localhost:5000/api/support/${ticketId}/respond`,
+        { message: reply },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setReply("")
+      setReplyingTicketId(null)
+      // Refresh tickets
+      const res = await axios.get("http://localhost:5000/api/support", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setTickets(res.data)
+    } catch (err) {
+      setError("Failed to send reply")
+    }
+  }
 
   const columns = [
     {
@@ -149,6 +159,7 @@ export default function AdminSupportPage() {
         name: "Admin User",
         email: "admin@saccosmart.com",
         avatar: "/placeholder.svg?height=32&width=32",
+        role: "admin"
       }}
     >
       <div className="space-y-6">
@@ -166,7 +177,7 @@ export default function AdminSupportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {supportTickets.filter((ticket) => ticket.status === "Open").length}
+                {tickets.filter((ticket) => ticket.status === "Open").length}
               </div>
             </CardContent>
           </Card>
@@ -176,7 +187,7 @@ export default function AdminSupportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {supportTickets.filter((ticket) => ticket.status === "In Progress").length}
+                {tickets.filter((ticket) => ticket.status === "In Progress").length}
               </div>
             </CardContent>
           </Card>
@@ -186,7 +197,7 @@ export default function AdminSupportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {supportTickets.filter((ticket) => ticket.status === "Resolved").length}
+                {tickets.filter((ticket) => ticket.status === "Resolved").length}
               </div>
             </CardContent>
           </Card>
@@ -195,7 +206,7 @@ export default function AdminSupportPage() {
               <CardTitle className="text-sm font-medium text-gray-600">Total Tickets</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-sacco-blue">{supportTickets.length}</div>
+              <div className="text-2xl font-bold text-sacco-blue">{tickets.length}</div>
             </CardContent>
           </Card>
         </div>
@@ -320,7 +331,83 @@ export default function AdminSupportPage() {
             <CardDescription>Track and manage user support requests and issues</CardDescription>
           </CardHeader>
           <CardContent>
-            <DataTable columns={columns} data={supportTickets} />
+            {loading ? (
+              <div>Loading...</div>
+            ) : error ? (
+              <div className="text-red-500">{error}</div>
+            ) : (
+              <div className="space-y-4">
+                {tickets.map((ticket) => (
+                  <div key={ticket._id} className="border rounded-lg p-4 mb-2">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-bold">{ticket.title || ticket.subject}</div>
+                        <div className="text-sm text-gray-600">{ticket.user?.name} ({ticket.user?.email})</div>
+                        <div className="text-xs text-gray-500">ID: {ticket._id} | {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                        <div>
+                          <Badge variant="outline">{ticket.category}</Badge>{" "}
+                          <Badge variant="outline">{ticket.priority}</Badge>{" "}
+                          <Badge variant="outline">{ticket.status}</Badge>
+                        </div>
+                        <div className="mt-2">{ticket.description}</div>
+                        {ticket.responses && ticket.responses.length > 0 && (
+                          <div className="mt-2">
+                            <span className="font-semibold">Responses:</span>
+                            <ul className="ml-4 list-disc">
+                              {ticket.responses.map((resp: any, idx: number) => (
+                                <li key={idx}>
+                                  <span className="text-xs text-gray-600">{new Date(resp.date).toLocaleString()}:</span>{" "}
+                                  {resp.message}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        {replyingTicketId === ticket._id ? (
+                          <div>
+                            <textarea
+                              className="border rounded p-1 w-48"
+                              value={reply}
+                              onChange={e => setReply(e.target.value)}
+                              placeholder="Type your reply..."
+                            />
+                            <div className="flex gap-2 mt-1">
+                              <Button
+                                size="sm"
+                                onClick={() => handleReply(ticket._id)}
+                                disabled={!reply.trim()}
+                              >
+                                Send
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setReply("")
+                                  setReplyingTicketId(null)
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setReplyingTicketId(ticket._id)}
+                          >
+                            Reply
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

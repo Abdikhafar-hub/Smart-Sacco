@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { DataTable } from "@/components/ui/data-table"
 import { Button } from "@/components/ui/button"
@@ -19,8 +19,22 @@ import {
 } from "@/components/ui/dialog"
 import { CreditCard, Smartphone, CheckCircle, Clock, XCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import axios from "axios"
+
+// Add this interface at the top (after imports)
+interface Contribution {
+  _id?: string
+  amount: number
+  date: string
+  status?: string
+  mpesaCode?: string
+  method?: string
+}
 
 export default function MemberContributions() {
+  const [contributions, setContributions] = useState<Contribution[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [amount, setAmount] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -32,42 +46,28 @@ export default function MemberContributions() {
     role: "Member",
   }
 
-  // Mock contribution history data
-  const contributionHistory = [
-    {
-      id: "TXN001",
-      amount: 5000,
-      date: "2024-01-15",
-      status: "Confirmed",
-      mpesaCode: "QA12345678",
-      method: "M-Pesa",
-    },
-    {
-      id: "TXN002",
-      amount: 3000,
-      date: "2024-01-10",
-      status: "Confirmed",
-      mpesaCode: "QB87654321",
-      method: "M-Pesa",
-    },
-    {
-      id: "TXN003",
-      amount: 7000,
-      date: "2024-01-05",
-      status: "Pending",
-      mpesaCode: "QC11223344",
-      method: "M-Pesa",
-    },
-    {
-      id: "TXN004",
-      amount: 2000,
-      date: "2024-01-01",
-      status: "Failed",
-      mpesaCode: "QD55667788",
-      method: "M-Pesa",
-    },
-  ]
+  // Fetch member's contributions from backend
+  const fetchContributions = async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const token = localStorage.getItem("token")
+      const res = await axios.get("http://localhost:5000/api/contribution", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setContributions(res.data)
+    } catch (err) {
+      setError("Failed to load contributions")
+    } finally {
+      setLoading(false)
+    }
+  }
 
+  useEffect(() => {
+    fetchContributions()
+  }, [])
+
+  // Table columns
   const columns = [
     {
       key: "date",
@@ -90,7 +90,7 @@ export default function MemberContributions() {
           Pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
           Failed: { color: "bg-red-100 text-red-800", icon: XCircle },
         }
-        const config = statusConfig[value as keyof typeof statusConfig]
+        const config = statusConfig[value as keyof typeof statusConfig] || statusConfig["Pending"]
         const Icon = config.icon
         return (
           <Badge className={config.color} variant="secondary">
@@ -110,6 +110,7 @@ export default function MemberContributions() {
     },
   ]
 
+  // Handle making a contribution
   const handleContribution = async () => {
     if (!amount || Number.parseFloat(amount) <= 0) {
       toast({
@@ -119,28 +120,48 @@ export default function MemberContributions() {
       })
       return
     }
-
     setIsProcessing(true)
-
-    // Simulate M-Pesa STK push
-    setTimeout(() => {
-      setIsProcessing(false)
-      setIsDialogOpen(false)
-      setAmount("")
+    try {
+      const token = localStorage.getItem("token")
+      await axios.post(
+        "http://localhost:5000/api/contribution",
+        { amount: Number(amount) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
       toast({
-        title: "Payment Initiated",
-        description: "Please check your phone for M-Pesa prompt and enter your PIN",
+        title: "Payment Successful",
+        description: `Your contribution of KES ${amount} has been received`,
       })
-
-      // Simulate payment confirmation after a delay
-      setTimeout(() => {
-        toast({
-          title: "Payment Successful",
-          description: `Your contribution of KES ${amount} has been received`,
-        })
-      }, 5000)
-    }, 2000)
+      setAmount("")
+      setIsDialogOpen(false)
+      fetchContributions()
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to make contribution",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessing(false)
+      setLoading(false)
+    }
   }
+
+  if (loading) return <div>Loading...</div>
+  if (error) return <div className="text-red-500">{error}</div>
+
+  // Calculate summary cards using backend data
+  const total = contributions.reduce((sum, c) => sum + (c.amount || 0), 0)
+  const thisMonth = contributions
+    .filter((c) => new Date(c.date).getMonth() === new Date().getMonth())
+    .reduce((sum, c) => sum + (c.amount || 0), 0)
+  const avgMonthly =
+    contributions.length > 0
+      ? Math.round(
+          contributions.reduce((sum, c) => sum + (c.amount || 0), 0) /
+            Math.max(1, new Set(contributions.map((c) => new Date(c.date).getMonth())).size)
+        )
+      : 0
 
   return (
     <DashboardLayout role="member" user={user}>
@@ -180,7 +201,7 @@ export default function MemberContributions() {
                     <span className="font-medium">M-Pesa Payment</span>
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    You will receive an M-Pesa prompt on your registered phone number: +254712345678
+                    You will receive an M-Pesa prompt on your registered phone number.
                   </p>
                 </div>
               </div>
@@ -207,7 +228,7 @@ export default function MemberContributions() {
               <CardTitle className="text-lg">Total Contributions</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-sacco-blue">KES 45,000</div>
+              <div className="text-2xl font-bold text-sacco-blue">KES {total.toLocaleString()}</div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Lifetime contributions</p>
             </CardContent>
           </Card>
@@ -216,7 +237,7 @@ export default function MemberContributions() {
               <CardTitle className="text-lg">This Month</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-sacco-green">KES 8,000</div>
+              <div className="text-2xl font-bold text-sacco-green">KES {thisMonth.toLocaleString()}</div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Current month contributions</p>
             </CardContent>
           </Card>
@@ -225,7 +246,7 @@ export default function MemberContributions() {
               <CardTitle className="text-lg">Average Monthly</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">KES 6,250</div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">KES {avgMonthly.toLocaleString()}</div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Last 6 months average</p>
             </CardContent>
           </Card>
@@ -233,7 +254,7 @@ export default function MemberContributions() {
 
         {/* Contribution History */}
         <DataTable
-          data={contributionHistory}
+          data={contributions}
           columns={columns}
           title="Contribution History"
           searchable={true}

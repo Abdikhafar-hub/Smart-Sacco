@@ -1,69 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Bell, CheckCircle, Clock, Mail, AlertCircle } from "lucide-react"
-
-// Mock data for notifications
-const mockNotifications = [
-  {
-    id: 1,
-    title: "Monthly Contribution Reminder",
-    message:
-      "Your monthly contribution of KES 5,000 is due on 30th January 2024. Please ensure timely payment to avoid penalties.",
-    timestamp: "2024-01-25T10:30:00Z",
-    isRead: false,
-    type: "reminder",
-    sender: "SACCO Admin",
-  },
-  {
-    id: 2,
-    title: "Loan Application Approved",
-    message:
-      "Congratulations! Your loan application for KES 50,000 has been approved. The funds will be disbursed within 2 business days.",
-    timestamp: "2024-01-24T14:15:00Z",
-    isRead: true,
-    type: "approval",
-    sender: "Loan Officer",
-  },
-  {
-    id: 3,
-    title: "System Maintenance Notice",
-    message:
-      "The SACCO system will undergo scheduled maintenance on Sunday, 28th January from 2:00 AM to 6:00 AM. Services may be temporarily unavailable.",
-    timestamp: "2024-01-23T09:00:00Z",
-    isRead: false,
-    type: "system",
-    sender: "IT Department",
-  },
-  {
-    id: 4,
-    title: "Dividend Payment Processed",
-    message:
-      "Your annual dividend of KES 2,500 has been credited to your account. Thank you for being a valued member.",
-    timestamp: "2024-01-22T16:45:00Z",
-    isRead: true,
-    type: "payment",
-    sender: "Finance Department",
-  },
-  {
-    id: 5,
-    title: "AGM Meeting Invitation",
-    message:
-      "You are invited to attend the Annual General Meeting on 15th February 2024 at 10:00 AM. Venue: SACCO Hall.",
-    timestamp: "2024-01-20T11:20:00Z",
-    isRead: false,
-    type: "meeting",
-    sender: "Secretary",
-  },
-]
+import { Bell, CheckCircle, Clock, Mail, AlertCircle, Info } from "lucide-react"
 
 export default function MemberNotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [notifications, setNotifications] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
   const [activeTab, setActiveTab] = useState("all")
 
   const user = {
@@ -73,83 +22,94 @@ export default function MemberNotificationsPage() {
     avatar: "/placeholder.svg?height=32&width=32",
   }
 
-  const markAsRead = (id: number) => {
-    setNotifications((prev) =>
-      prev.map((notification) => (notification.id === id ? { ...notification, isRead: true } : notification)),
-    )
-  }
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      setLoading(true)
+      setError("")
+      try {
+        const token = localStorage.getItem("token")
+        const res = await fetch("http://localhost:5000/api/notifications/member", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        const data = await res.json()
+        setNotifications(data)
+      } catch (err) {
+        setError("Failed to load notifications")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchNotifications()
+  }, [])
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })))
-  }
+  const markAsRead = (id) => {}
+  const markAllAsRead = () => {}
 
   const getFilteredNotifications = () => {
     switch (activeTab) {
       case "unread":
-        return notifications.filter((n) => !n.isRead)
+        return notifications
       case "read":
-        return notifications.filter((n) => n.isRead)
+        return notifications
       default:
         return notifications
     }
   }
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case "reminder":
-        return <Clock className="h-4 w-4 text-orange-500" />
-      case "approval":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "system":
-        return <AlertCircle className="h-4 w-4 text-blue-500" />
-      case "payment":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "meeting":
-        return <Mail className="h-4 w-4 text-purple-500" />
-      default:
-        return <Bell className="h-4 w-4 text-gray-500" />
-    }
-  }
+  const getNotificationIcon = () => <Bell className="h-4 w-4 text-gray-500" />
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "reminder":
-        return "bg-orange-100 text-orange-800"
-      case "approval":
-        return "bg-green-100 text-green-800"
-      case "system":
-        return "bg-blue-100 text-blue-800"
-      case "payment":
-        return "bg-green-100 text-green-800"
-      case "meeting":
-        return "bg-purple-100 text-purple-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
+  const getTypeColor = () => "bg-gray-100 text-gray-800"
 
-  const formatTimestamp = (timestamp: string) => {
+  const formatTimestamp = (timestamp) => {
     const date = new Date(timestamp)
     return date.toLocaleDateString() + " at " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   }
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length
+  const unreadCount = notifications.length
   const totalCount = notifications.length
+
+  const typeStyles = {
+    alert: {
+      border: "border-red-500",
+      bg: "bg-red-50",
+      iconBg: "bg-red-100 text-red-600",
+      icon: <AlertCircle className="h-6 w-6" />,
+    },
+    success: {
+      border: "border-green-500",
+      bg: "bg-green-50",
+      iconBg: "bg-green-100 text-green-600",
+      icon: <CheckCircle className="h-6 w-6" />,
+    },
+    info: {
+      border: "border-blue-500",
+      bg: "bg-blue-50",
+      iconBg: "bg-blue-100 text-blue-600",
+      icon: <Info className="h-6 w-6" />,
+    },
+    default: {
+      border: "border-sacco-blue",
+      bg: "bg-blue-50/30",
+      iconBg: "bg-sacco-blue/10 text-sacco-blue",
+      icon: <Bell className="h-6 w-6" />,
+    },
+  }
 
   return (
     <DashboardLayout role="member" user={user}>
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-            <p className="text-gray-600 mt-1">Stay updated with important messages and announcements</p>
+            <h1 className="text-4xl font-extrabold text-sacco-blue mb-1">Notifications</h1>
+            <p className="text-gray-600 mt-1 text-lg">Stay updated with important messages and announcements</p>
           </div>
           <div className="flex items-center space-x-4">
-            <Badge variant="secondary" className="text-sm">
+            <Badge variant="secondary" className="text-sm bg-yellow-400 text-white px-3 py-1 rounded-full">
               {unreadCount} unread
             </Badge>
-            <Button onClick={markAllAsRead} variant="outline" size="sm">
+            <Button onClick={markAllAsRead} variant="outline" size="sm" className="rounded-full border-sacco-blue text-sacco-blue hover:bg-sacco-blue/10">
               Mark All as Read
             </Button>
           </div>
@@ -157,112 +117,100 @@ export default function MemberNotificationsPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
+          <Card className="shadow-md rounded-xl bg-gradient-to-r from-blue-100 to-blue-50">
+            <CardContent className="p-6 flex items-center space-x-4">
+              <div className="bg-sacco-blue/10 rounded-full p-3">
                 <Bell className="h-8 w-8 text-sacco-blue" />
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{totalCount}</p>
-                  <p className="text-sm text-gray-600">Total Notifications</p>
-                </div>
+              </div>
+              <div>
+                <p className="text-3xl font-extrabold text-sacco-blue">{totalCount}</p>
+                <p className="text-base text-gray-600">Total Notifications</p>
               </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <Mail className="h-8 w-8 text-orange-500" />
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{unreadCount}</p>
-                  <p className="text-sm text-gray-600">Unread Messages</p>
-                </div>
+          <Card className="shadow-md rounded-xl bg-gradient-to-r from-yellow-100 to-yellow-50">
+            <CardContent className="p-6 flex items-center space-x-4">
+              <div className="bg-yellow-400/20 rounded-full p-3">
+                <Mail className="h-8 w-8 text-yellow-500" />
+              </div>
+              <div>
+                <p className="text-3xl font-extrabold text-yellow-500">{unreadCount}</p>
+                <p className="text-base text-gray-600">Unread Messages</p>
               </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
+          <Card className="shadow-md rounded-xl bg-gradient-to-r from-green-100 to-green-50">
+            <CardContent className="p-6 flex items-center space-x-4">
+              <div className="bg-green-400/20 rounded-full p-3">
                 <CheckCircle className="h-8 w-8 text-green-500" />
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{totalCount - unreadCount}</p>
-                  <p className="text-sm text-gray-600">Read Messages</p>
-                </div>
+              </div>
+              <div>
+                <p className="text-3xl font-extrabold text-green-500">{totalCount - unreadCount}</p>
+                <p className="text-base text-gray-600">Read Messages</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Notifications List */}
-        <Card>
+        <Card className="shadow-lg rounded-2xl">
           <CardHeader>
-            <CardTitle>Messages</CardTitle>
-            <CardDescription>View and manage your notifications from SACCO administrators</CardDescription>
+            <CardTitle className="text-2xl font-bold text-sacco-blue flex items-center gap-2">
+              <Bell className="h-6 w-6" /> Messages
+            </CardTitle>
+            <CardDescription className="text-base">View and manage your notifications from SACCO administrators</CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="all">All ({totalCount})</TabsTrigger>
-                <TabsTrigger value="unread">Unread ({unreadCount})</TabsTrigger>
-                <TabsTrigger value="read">Read ({totalCount - unreadCount})</TabsTrigger>
-              </TabsList>
+            {loading ? (
+              <div className="text-center py-8 text-gray-500">Loading notifications...</div>
+            ) : error ? (
+              <div className="text-center py-8 text-red-500">{error}</div>
+            ) : (
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid w-full grid-cols-3 rounded-full bg-sacco-blue/10 mb-4">
+                  <TabsTrigger value="all" className="rounded-full data-[state=active]:bg-sacco-blue data-[state=active]:text-white transition">All ({totalCount})</TabsTrigger>
+                  <TabsTrigger value="unread" className="rounded-full data-[state=active]:bg-yellow-400 data-[state=active]:text-white transition">Unread ({unreadCount})</TabsTrigger>
+                  <TabsTrigger value="read" className="rounded-full data-[state=active]:bg-green-500 data-[state=active]:text-white transition">Read ({totalCount - unreadCount})</TabsTrigger>
+                </TabsList>
 
-              <TabsContent value={activeTab} className="mt-6">
-                <div className="space-y-4">
-                  {getFilteredNotifications().length === 0 ? (
-                    <div className="text-center py-8">
-                      <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">No notifications found</p>
-                    </div>
-                  ) : (
-                    getFilteredNotifications().map((notification) => (
-                      <Card
-                        key={notification.id}
-                        className={`transition-all hover:shadow-md ${!notification.isRead ? "border-l-4 border-l-sacco-blue bg-blue-50/30" : ""}`}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start space-x-3 flex-1">
-                              {getNotificationIcon(notification.type)}
+                <TabsContent value={activeTab} className="mt-6">
+                  <div className="space-y-4">
+                    {getFilteredNotifications().length === 0 ? (
+                      <div className="text-center py-12">
+                        <Bell className="h-16 w-16 text-sacco-blue mx-auto mb-4 animate-bounce" />
+                        <p className="text-gray-500 text-lg font-semibold">No notifications found</p>
+                      </div>
+                    ) : (
+                      getFilteredNotifications().map((notification) => {
+                        const type = notification.type || "default"
+                        const style = typeStyles[type] || typeStyles.default
+                        return (
+                          <Card
+                            key={notification._id}
+                            className={`transition-all shadow-md border-l-8 ${style.border} ${style.bg} hover:scale-[1.01] rounded-xl`}
+                          >
+                            <CardContent className="p-5 flex items-start space-x-4">
+                              <div className={`rounded-full p-3 ${style.iconBg} flex-shrink-0`}>{style.icon}</div>
                               <div className="flex-1">
                                 <div className="flex items-center space-x-2 mb-1">
-                                  <h3
-                                    className={`font-semibold ${!notification.isRead ? "text-gray-900" : "text-gray-700"}`}
-                                  >
-                                    {notification.title}
-                                  </h3>
-                                  {!notification.isRead && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      New
-                                    </Badge>
-                                  )}
-                                  <Badge className={`text-xs ${getTypeColor(notification.type)}`}>
-                                    {notification.type}
-                                  </Badge>
+                                  <h3 className="font-bold text-lg text-gray-900">{notification.title}</h3>
+                                  <Badge variant="secondary" className="text-xs bg-yellow-400 text-white">New</Badge>
                                 </div>
-                                <p className="text-gray-600 text-sm mb-2">{notification.message}</p>
+                                <p className="text-gray-700 text-base mb-2">{notification.message}</p>
                                 <div className="flex items-center justify-between text-xs text-gray-500">
-                                  <span>From: {notification.sender}</span>
-                                  <span>{formatTimestamp(notification.timestamp)}</span>
+                                  <span>From: {notification.sentBy || "Admin"}</span>
+                                  <span>{notification.sentAt ? formatTimestamp(notification.sentAt) : ""}</span>
                                 </div>
                               </div>
-                            </div>
-                            <div className="flex items-center space-x-2 ml-4">
-                              {!notification.isRead && (
-                                <Button onClick={() => markAsRead(notification.id)} variant="outline" size="sm">
-                                  Mark as Read
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+                            </CardContent>
+                          </Card>
+                        )
+                      })
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Mail, Phone, Clock, Send, Ticket } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import axios from "axios"
 
 const supportTickets = [
   {
@@ -39,13 +40,52 @@ export default function MemberSupportPage() {
     priority: "",
     description: "",
   })
+  const [tickets, setTickets] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch member's own tickets
+  useEffect(() => {
+    const fetchTickets = async () => {
+      setLoading(true)
+      setError("")
+      try {
+        const token = localStorage.getItem("token")
+        const res = await axios.get("http://localhost:5000/api/support/my", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setTickets(res.data)
+      } catch (err) {
+        setError("Failed to load tickets")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchTickets()
+  }, [])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle form submission
-    console.log("Support ticket submitted:", formData)
-    // Reset form
-    setFormData({ subject: "", category: "", priority: "", description: "" })
+    try {
+      const token = localStorage.getItem("token")
+      await axios.post(
+        "http://localhost:5000/api/support",
+        {
+          ...formData,
+          category: formData.category.toLowerCase(),
+          priority: formData.priority.toLowerCase(),
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setFormData({ subject: "", category: "", priority: "", description: "" })
+      // Refresh tickets
+      const res = await axios.get("http://localhost:5000/api/support/my", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setTickets(res.data)
+    } catch (err) {
+      setError("Failed to submit ticket")
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -194,24 +234,46 @@ export default function MemberSupportPage() {
             <CardDescription>Track the status of your submitted support requests</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {supportTickets.map((ticket) => (
-                <div key={ticket.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{ticket.subject}</span>
-                      <Badge variant="outline">{ticket.category}</Badge>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>Ticket ID: {ticket.id}</span>
-                      <span>Date: {ticket.date}</span>
-                      <span>Priority: {ticket.priority}</span>
+            {loading ? (
+              <div>Loading...</div>
+            ) : error ? (
+              <div className="text-red-500">{error}</div>
+            ) : (
+              <div className="space-y-4">
+                {tickets.map((ticket) => (
+                  <div key={ticket._id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{ticket.subject || ticket.title}</span>
+                        <Badge variant="outline">{ticket.category}</Badge>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span>Ticket ID: {ticket._id}</span>
+                        <span>Date: {new Date(ticket.createdAt).toLocaleDateString()}</span>
+                        <span>Priority: {ticket.priority}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold">Status: </span>
+                        <Badge className={getStatusColor(ticket.status)}>{ticket.status}</Badge>
+                      </div>
+                      {ticket.responses && ticket.responses.length > 0 && (
+                        <div className="mt-2">
+                          <span className="font-semibold">Admin Responses:</span>
+                          <ul className="ml-4 list-disc">
+                            {ticket.responses.map((resp: any, idx: number) => (
+                              <li key={idx}>
+                                <span className="text-xs text-gray-600">{new Date(resp.date).toLocaleString()}:</span>{" "}
+                                {resp.message}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <Badge className={getStatusColor(ticket.status)}>{ticket.status}</Badge>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

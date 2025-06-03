@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,137 +18,141 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import axios from "axios"
+
+interface Document {
+  _id: string
+  title: string
+  type: string
+  status: "active" | "inactive"
+  filePath: string
+  fileSize: number
+  createdAt: string
+  updatedAt: string
+}
+
+const columns = [
+  { key: "title", label: "Title" },
+  { key: "type", label: "Type" },
+  { key: "status", label: "Status" },
+  { key: "filePath", label: "File" },
+  { key: "fileSize", label: "Size (KB)" },
+  { key: "createdAt", label: "Created" },
+  // ...add more as needed
+]
 
 export default function AdminDocumentsPage() {
+  const [documents, setDocuments] = useState<Document[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [documentType, setDocumentType] = useState("")
+  const [title, setTitle] = useState("")
+  const [type, setType] = useState("")
+  const [status, setStatus] = useState<"active" | "inactive">("active")
   const [isUploading, setIsUploading] = useState(false)
+  const [search, setSearch] = useState("")
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [docTypes, setDocTypes] = useState<{ value: string, label: string }[]>([])
 
-  // Mock data for uploaded documents
-  const documents = [
-    {
-      id: 1,
-      name: "SACCO Constitution 2024",
-      type: "Constitution",
-      uploadedBy: "John Admin",
-      uploadedDate: "2024-01-15",
-      fileSize: "2.4 MB",
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "Member By-laws v2.1",
-      type: "By-laws",
-      uploadedBy: "Jane Manager",
-      uploadedDate: "2024-01-10",
-      fileSize: "1.8 MB",
-      status: "Active",
-    },
-    {
-      id: 3,
-      name: "Privacy Policy 2024",
-      type: "Policy",
-      uploadedBy: "John Admin",
-      uploadedDate: "2024-01-05",
-      fileSize: "856 KB",
-      status: "Active",
-    },
-    {
-      id: 4,
-      name: "Loan Policy Guidelines",
-      type: "Policy",
-      uploadedBy: "Sarah Treasurer",
-      uploadedDate: "2023-12-20",
-      fileSize: "1.2 MB",
-      status: "Archived",
-    },
-  ]
+  // Fetch documents from backend
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      setLoading(true)
+      setError("")
+      try {
+        const token = localStorage.getItem("token")
+        const res = await axios.get("http://localhost:5000/api/documents", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setDocuments(res.data)
+      } catch (err) {
+        setError("Failed to load documents")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDocuments()
+  }, [])
 
-  const columns = [
-    {
-      accessorKey: "name",
-      header: "Document Name",
-      cell: ({ row }: any) => (
-        <div className="flex items-center space-x-2">
-          <FileText className="h-4 w-4 text-blue-500" />
-          <span className="font-medium">{row.getValue("name")}</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ row }: any) => <Badge variant="outline">{row.getValue("type")}</Badge>,
-    },
-    {
-      accessorKey: "uploadedBy",
-      header: "Uploaded By",
-      cell: ({ row }: any) => (
-        <div className="flex items-center space-x-1">
-          <User className="h-3 w-3 text-gray-500" />
-          <span>{row.getValue("uploadedBy")}</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "uploadedDate",
-      header: "Upload Date",
-      cell: ({ row }: any) => (
-        <div className="flex items-center space-x-1">
-          <Calendar className="h-3 w-3 text-gray-500" />
-          <span>{row.getValue("uploadedDate")}</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "fileSize",
-      header: "Size",
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }: any) => {
-        const status = row.getValue("status")
-        return <Badge variant={status === "Active" ? "default" : "secondary"}>{status}</Badge>
-      },
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }: any) => (
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-3 w-3 mr-1" />
-            Download
-          </Button>
-          <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      ),
-    },
-  ]
+  useEffect(() => {
+    const fetchTypes = async () => {
+      const token = localStorage.getItem("token")
+      const res = await axios.get("http://localhost:5000/api/documents/types", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setDocTypes(res.data)
+    }
+    fetchTypes()
+  }, [])
 
-  const handleFileUpload = async () => {
-    if (!selectedFile || !documentType) return
-
+  // Upload document
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedFile || !title || !type) {
+      setError("All fields are required")
+      return
+    }
     setIsUploading(true)
-    // Simulate upload process
-    setTimeout(() => {
-      setIsUploading(false)
+    setError("")
+    try {
+      const token = localStorage.getItem("token")
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+      formData.append("title", title)
+      formData.append("type", type)
+      formData.append("status", status)
+      await axios.post("http://localhost:5000/api/documents", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data"
+        }
+      })
+      setTitle("")
+      setType("")
+      setStatus("active")
       setSelectedFile(null)
-      setDocumentType("")
-      // Show success message
-    }, 2000)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      // Refresh documents
+      const res = await axios.get("http://localhost:5000/api/documents", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setDocuments(res.data)
+    } catch (err) {
+      setError("Failed to upload document")
+    } finally {
+      setIsUploading(false)
+    }
   }
+
+  // Delete document
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this document?")) return
+    try {
+      const token = localStorage.getItem("token")
+      await axios.delete(`http://localhost:5000/api/documents/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setDocuments(docs => docs.filter(doc => doc._id !== id))
+    } catch (err) {
+      setError("Failed to delete document")
+    }
+  }
+
+  // Filtered documents
+  const filteredDocuments = documents.filter(
+    doc =>
+      doc.title.toLowerCase().includes(search.toLowerCase()) ||
+      doc.type.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
     <DashboardLayout
       role="admin"
       user={{
         name: "Admin User",
-        email: "admin@saccosmart.com",
+        email: "admin@sacco.com",
         avatar: "/placeholder.svg?height=32&width=32",
+        role: "admin"
       }}
     >
       <div className="space-y-6">
@@ -173,15 +177,14 @@ export default function AdminDocumentsPage() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="document-type">Document Type</Label>
-                  <Select value={documentType} onValueChange={setDocumentType}>
+                  <Select value={type} onValueChange={setType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select document type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="constitution">SACCO Constitution</SelectItem>
-                      <SelectItem value="bylaws">By-laws</SelectItem>
-                      <SelectItem value="policy">Policy Document</SelectItem>
-                      <SelectItem value="procedure">Procedure Manual</SelectItem>
+                      {docTypes.map(dt => (
+                        <SelectItem key={dt.value} value={dt.value}>{dt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -202,8 +205,8 @@ export default function AdminDocumentsPage() {
                   </div>
                 )}
                 <Button
-                  onClick={handleFileUpload}
-                  disabled={!selectedFile || !documentType || isUploading}
+                  onClick={handleUpload}
+                  disabled={!selectedFile || !type || isUploading}
                   className="w-full"
                 >
                   {isUploading ? "Uploading..." : "Upload Document"}
@@ -229,7 +232,7 @@ export default function AdminDocumentsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {documents.filter((doc) => doc.status === "Active").length}
+                {documents.filter((doc) => doc.status === "active").length}
               </div>
             </CardContent>
           </Card>
@@ -258,7 +261,57 @@ export default function AdminDocumentsPage() {
             <CardDescription>All uploaded SACCO documents and policies</CardDescription>
           </CardHeader>
           <CardContent>
-            <DataTable columns={columns} data={documents} />
+            <form onSubmit={handleUpload} className="mb-6 flex flex-col md:flex-row gap-4 items-center">
+              <input
+                type="text"
+                placeholder="Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="border rounded px-2 py-1"
+              />
+              <input
+                type="text"
+                placeholder="Type (e.g. policy, legal)"
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="border rounded px-2 py-1"
+              />
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
+                className="border rounded px-2 py-1"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                className="border rounded px-2 py-1"
+                accept=".pdf,.doc,.docx"
+              />
+              <button
+                type="submit"
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+                disabled={isUploading}
+              >
+                {isUploading ? "Uploading..." : "Upload"}
+              </button>
+            </form>
+            <input
+              type="text"
+              placeholder="Search by title or type..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="border rounded px-2 py-1 mb-4 w-full"
+            />
+            {error && <div className="text-red-500 mb-2">{error}</div>}
+            {loading ? (
+              <div>Loading...</div>
+            ) : (
+              <DataTable columns={columns} data={filteredDocuments} />
+            )}
           </CardContent>
         </Card>
       </div>

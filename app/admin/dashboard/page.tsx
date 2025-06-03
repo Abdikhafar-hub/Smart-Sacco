@@ -6,67 +6,169 @@ import { ChartCard } from "@/components/ui/chart-card"
 import { DataTable } from "@/components/ui/data-table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Users, CreditCard, Banknote, TrendingUp, AlertTriangle } from "lucide-react"
+import { Users, CreditCard, Banknote, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Eye } from "lucide-react"
+import { useEffect, useState } from "react"
+import axios from "axios"
+import useSWR from "swr"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
+
+interface AdminDashboardData {
+  members: { name: string; email: string }[]
+  loans: { amount: number; status: string; date: string }[]
+  contributions: { amount: number; date: string }[]
+}
+
+interface Loan {
+  _id: string
+  userId: string
+  userName: string
+  amount: number
+  status: string
+  date?: string
+  term?: string
+  purpose?: string
+  balance?: number
+  disbursedAmount?: number
+  interestRate?: number
+  monthlyPayment?: number
+  nextDueDate?: string
+  completedDate?: string
+  rejectedDate?: string
+  rejectionReason?: string
+}
+
+interface DashboardStats {
+  totalMembers: number
+  totalLoans: number
+  totalContributions: number
+  activeLoans: number
+  pendingLoans: number
+  totalLoanAmount: number
+  totalContributionsAmount: number
+}
+
+const fetcher = (url: string) => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  return axios.get(url, { headers: { Authorization: `Bearer ${token}` } }).then(res => res.data)
+}
 
 export default function AdminDashboard() {
-  const user = {
-    name: "Admin User",
-    email: "admin@saccosmart.com",
-    role: "Admin",
+  // Top summary cards
+  const { data: dashboardData, isLoading: loadingDashboard, error: errorDashboard } = useSWR(
+    "http://localhost:5000/api/dashboard/admin", fetcher
+  )
+  // Contributions trend
+  const { data: contributionsTrend, isLoading: loadingTrend } = useSWR(
+    "http://localhost:5000/api/analytics/contributions-trend", fetcher
+  )
+  // Loan status distribution
+  const { data: loanStatusData, isLoading: loadingLoanStatus } = useSWR(
+    "http://localhost:5000/api/analytics/loan-status-distribution", fetcher
+  )
+  // System alerts
+  const { data: alerts, isLoading: loadingAlerts } = useSWR(
+    "http://localhost:5000/api/system/alerts", fetcher
+  )
+  // Recent activity
+  const { data: recentActivities, isLoading: loadingActivity } = useSWR(
+    "http://localhost:5000/api/system/activity", fetcher
+  )
+
+  const [stats, setStats] = useState<DashboardStats>({
+    totalMembers: 0,
+    totalLoans: 0,
+    totalContributions: 0,
+    activeLoans: 0,
+    pendingLoans: 0,
+    totalLoanAmount: 0,
+    totalContributionsAmount: 0,
+  })
+  const [loans, setLoans] = useState<Loan[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
+  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null)
+  const [rejectionReason, setRejectionReason] = useState("")
+  const { toast } = useToast()
+
+  const fetchDashboardData = async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const token = localStorage.getItem("token")
+      const [statsRes, loansRes] = await Promise.all([
+        axios.get("http://localhost:5000/api/admin/stats", {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get("http://localhost:5000/api/admin/loans", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ])
+      setStats(statsRes.data)
+      setLoans(loansRes.data)
+    } catch (err) {
+      setError("Failed to load dashboard data")
+      console.error("Failed to fetch dashboard data:", err)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Mock data
-  const contributionsOverTime = [
-    { name: "Jan", value: 150000 },
-    { name: "Feb", value: 180000 },
-    { name: "Mar", value: 165000 },
-    { name: "Apr", value: 220000 },
-    { name: "May", value: 195000 },
-    { name: "Jun", value: 240000 },
-  ]
+  useEffect(() => {
+    fetchDashboardData()
+  }, [])
 
-  const loanStatusData = [
-    { name: "Active", value: 45 },
-    { name: "Pending", value: 12 },
-    { name: "Completed", value: 78 },
-    { name: "Defaulted", value: 5 },
-  ]
+  // Loading and error handling
+  if (loadingDashboard || loadingTrend || loadingLoanStatus || loadingAlerts || loadingActivity || loading) {
+    return <div>Loading...</div>
+  }
 
-  const recentActivities = [
-    {
-      id: 1,
-      user: "John Doe",
-      action: "Made contribution",
-      amount: "KES 5,000",
-      time: "2 hours ago",
-      type: "contribution",
-    },
-    {
-      id: 2,
-      user: "Jane Smith",
-      action: "Applied for loan",
-      amount: "KES 50,000",
-      time: "4 hours ago",
-      type: "loan",
-    },
-    {
-      id: 3,
-      user: "Mike Johnson",
-      action: "Loan payment",
-      amount: "KES 3,000",
-      time: "6 hours ago",
-      type: "payment",
-    },
-    {
-      id: 4,
-      user: "Sarah Wilson",
-      action: "Profile updated",
-      amount: "-",
-      time: "1 day ago",
-      type: "profile",
-    },
-  ]
+  if (errorDashboard || error) {
+    return <div className="text-red-500">Failed to load dashboard data</div>
+  }
 
+  if (!dashboardData || !contributionsTrend || !loanStatusData || !alerts || !recentActivities) {
+    return null
+  }
+
+  // Top cards
+  const totalUsers = dashboardData.members.length
+  const totalSavings = dashboardData.contributions.reduce((sum: number, c: any) => sum + (c.amount || 0), 0)
+  const outstandingLoans = dashboardData.loans
+    .filter((l: any) => l.status === "approved" || l.status === "active")
+    .reduce((sum: number, l: any) => sum + (l.amount || 0), 0)
+  const monthlyGrowth = dashboardData.monthlyGrowth
+
+  // System alerts
+  const overdue = alerts.overdueLoans
+  const pending = alerts.pendingLoans
+  const lastBackup = alerts.lastBackup
+
+  // Activity columns (unchanged)
   const activityColumns = [
     {
       key: "user",
@@ -97,9 +199,10 @@ export default function AdminDashboard() {
           loan: "bg-blue-100 text-blue-800",
           payment: "bg-purple-100 text-purple-800",
           profile: "bg-gray-100 text-gray-800",
+          other: "bg-gray-100 text-gray-800",
         }
         return (
-          <Badge className={colors[value as keyof typeof colors]} variant="secondary">
+          <Badge className={colors[value as keyof typeof colors] || "bg-gray-100 text-gray-800"} variant="secondary">
             {value}
           </Badge>
         )
@@ -107,8 +210,76 @@ export default function AdminDashboard() {
     },
   ]
 
+  const handleApproveLoan = async (loanId: string) => {
+    try {
+      const token = localStorage.getItem("token")
+      await axios.post(
+        `http://localhost:5000/api/admin/loans/${loanId}/approve`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      toast({
+        title: "Loan Approved",
+        description: "The loan has been approved successfully",
+      })
+      fetchDashboardData()
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to approve loan",
+        variant: "destructive",
+      })
+      console.error("Failed to approve loan:", err)
+    }
+  }
+
+  const handleRejectLoan = async () => {
+    if (!selectedLoan || !rejectionReason) {
+      toast({
+        title: "Missing Information",
+        description: "Please provide a reason for rejection",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const token = localStorage.getItem("token")
+      await axios.post(
+        `http://localhost:5000/api/admin/loans/${selectedLoan._id}/reject`,
+        { reason: rejectionReason },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      toast({
+        title: "Loan Rejected",
+        description: "The loan has been rejected successfully",
+      })
+      setIsRejectDialogOpen(false)
+      setSelectedLoan(null)
+      setRejectionReason("")
+      fetchDashboardData()
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to reject loan",
+        variant: "destructive",
+      })
+      console.error("Failed to reject loan:", err)
+    }
+  }
+
+  const viewLoanDetails = (loanId: string) => {
+    const loan = loans.find(l => l._id === loanId)
+    if (loan) {
+      toast({
+        title: "Loan Details",
+        description: `Viewing details for loan ${loanId}`,
+      })
+    }
+  }
+
   return (
-    <DashboardLayout role="admin" user={user}>
+    <DashboardLayout role="admin" user={{ name: "Admin", email: "", role: "Admin" }}>
       <div className="space-y-6">
         {/* Welcome Section */}
         <div>
@@ -120,31 +291,31 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatsCard
             title="Total Users"
-            value="1,234"
+            value={totalUsers.toLocaleString()}
             description="Active SACCO members"
             icon={Users}
-            trend={{ value: 8, isPositive: true }}
+            trend={{ value: 8, isPositive: true }} // Optionally, replace with backend trend if available
           />
           <StatsCard
             title="Total Savings"
-            value="KES 2.4M"
+            value={`KES ${totalSavings.toLocaleString()}`}
             description="All member contributions"
             icon={CreditCard}
-            trend={{ value: 15, isPositive: true }}
+            trend={{ value: 15, isPositive: true }} // Optionally, replace with backend trend if available
           />
           <StatsCard
             title="Outstanding Loans"
-            value="KES 850K"
+            value={`KES ${outstandingLoans.toLocaleString()}`}
             description="Active loan portfolio"
             icon={Banknote}
-            trend={{ value: -3, isPositive: false }}
+            trend={{ value: -3, isPositive: false }} // Optionally, replace with backend trend if available
           />
           <StatsCard
             title="Monthly Growth"
-            value="12.5%"
+            value={`${monthlyGrowth}%`}
             description="Member growth rate"
             icon={TrendingUp}
-            trend={{ value: 2.1, isPositive: true }}
+            trend={{ value: monthlyGrowth, isPositive: monthlyGrowth >= 0 }}
           />
         </div>
 
@@ -154,7 +325,7 @@ export default function AdminDashboard() {
             title="Contributions Over Time"
             description="Monthly contribution trends"
             type="line"
-            data={contributionsOverTime}
+            data={contributionsTrend}
             dataKey="value"
             xAxisKey="name"
           />
@@ -181,14 +352,14 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                 <div>
-                  <h4 className="font-medium text-red-800 dark:text-red-200">5 Overdue Loan Payments</h4>
-                  <p className="text-sm text-red-600 dark:text-red-300">Total amount: KES 45,000</p>
+                  <h4 className="font-medium text-red-800 dark:text-red-200">{overdue.count} Overdue Loan Payments</h4>
+                  <p className="text-sm text-red-600 dark:text-red-300">Total amount: KES {overdue.totalAmount.toLocaleString()}</p>
                 </div>
                 <Badge variant="destructive">High Priority</Badge>
               </div>
               <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                 <div>
-                  <h4 className="font-medium text-yellow-800 dark:text-yellow-200">12 Pending Loan Applications</h4>
+                  <h4 className="font-medium text-yellow-800 dark:text-yellow-200">{pending.count} Pending Loan Applications</h4>
                   <p className="text-sm text-yellow-600 dark:text-yellow-300">Awaiting approval</p>
                 </div>
                 <Badge className="bg-yellow-100 text-yellow-800" variant="secondary">
@@ -198,7 +369,7 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                 <div>
                   <h4 className="font-medium text-blue-800 dark:text-blue-200">System Backup Completed</h4>
-                  <p className="text-sm text-blue-600 dark:text-blue-300">Last backup: 2 hours ago</p>
+                  <p className="text-sm text-blue-600 dark:text-blue-300">Last backup: {lastBackup ? new Date(lastBackup).toLocaleString() : "N/A"}</p>
                 </div>
                 <Badge className="bg-blue-100 text-blue-800" variant="secondary">
                   Info
@@ -218,6 +389,145 @@ export default function AdminDashboard() {
           exportable={true}
           pageSize={5}
         />
+
+        {/* Loan Applications */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Loan Applications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              data={loans}
+              columns={[
+                {
+                  key: "_id",
+                  label: "Loan ID",
+                  sortable: true,
+                },
+                {
+                  key: "userName",
+                  label: "Member",
+                  sortable: true,
+                },
+                {
+                  key: "amount",
+                  label: "Amount",
+                  sortable: true,
+                  render: (value: number) => `KES ${value.toLocaleString()}`,
+                },
+                {
+                  key: "term",
+                  label: "Term",
+                },
+                {
+                  key: "date",
+                  label: "Applied Date",
+                  sortable: true,
+                  render: (value: string | undefined) =>
+                    value ? new Date(value).toLocaleDateString() : "N/A",
+                },
+                {
+                  key: "status",
+                  label: "Status",
+                  render: (value: string) => {
+                    const statusConfig = {
+                      pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
+                      approved: { color: "bg-green-100 text-green-800", icon: CheckCircle },
+                      rejected: { color: "bg-red-100 text-red-800", icon: XCircle },
+                      active: { color: "bg-blue-100 text-blue-800", icon: CheckCircle },
+                      completed: { color: "bg-gray-100 text-gray-800", icon: CheckCircle },
+                    }
+                    const config = statusConfig[value as keyof typeof statusConfig] || statusConfig.pending
+                    const Icon = config.icon
+                    return (
+                      <Badge className={config.color} variant="secondary">
+                        <Icon className="h-3 w-3 mr-1" />
+                        {value}
+                      </Badge>
+                    )
+                  },
+                },
+                {
+                  key: "actions",
+                  label: "Actions",
+                  render: (value: any, row: any) => (
+                    <div className="flex space-x-2">
+                      <Button size="sm" variant="outline" onClick={() => viewLoanDetails(row._id)}>
+                        <Eye className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                      {row.status === "pending" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-green-100 text-green-800 hover:bg-green-200"
+                            onClick={() => handleApproveLoan(row._id)}
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-red-100 text-red-800 hover:bg-red-200"
+                            onClick={() => {
+                              setSelectedLoan(row)
+                              setIsRejectDialogOpen(true)
+                            }}
+                          >
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+              title="Loan Applications"
+              searchable={true}
+              filterable={true}
+              exportable={true}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Reject Loan Dialog */}
+        <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject Loan Application</DialogTitle>
+              <DialogDescription>
+                Please provide a reason for rejecting this loan application. This will be communicated to the member.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reason">Rejection Reason</Label>
+                <Textarea
+                  id="reason"
+                  placeholder="Enter reason for rejection"
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsRejectDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRejectLoan}
+                disabled={!rejectionReason.trim()}
+              >
+                Reject Application
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Checkbox } from "@/components/ui/checkbox"
 import { Eye, EyeOff, Building2, Home } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import axios from "axios"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -17,27 +18,57 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState("")
+  const [forgotMsg, setForgotMsg] = useState("")
+  const [forgotLoading, setForgotLoading] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
 
   const handleLogin = async (role: "member" | "admin") => {
     setIsLoading(true)
-
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
+    setError("")
+    try {
+      const res = await axios.post("http://localhost:5000/api/auth/login", {
+        email,
+        password,
+      })
+      localStorage.setItem("token", res.data.token)
       toast({
         title: "Login Successful",
-        description: `Welcome back! Logging in as ${role}.`,
+        description: `Welcome back! Logging in as ${res.data.user.role}.`,
       })
-
-      // Route based on role
-      if (role === "member") {
-        router.push("/member/dashboard")
-      } else {
+      // Route based on role from backend, not button
+      if (res.data.user.role === "admin") {
         router.push("/admin/dashboard")
+      } else {
+        router.push("/member/dashboard")
       }
-    }, 1500)
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Login failed")
+      toast({
+        title: "Login Failed",
+        description: err.response?.data?.message || "Invalid credentials",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotLoading(true)
+    setForgotMsg("")
+    try {
+      await axios.post("http://localhost:5000/api/auth/forgot-password", { email: forgotEmail })
+      setForgotMsg("If this email exists, a reset link has been sent.")
+    } catch (err: any) {
+      setForgotMsg(err.response?.data?.message || "Error sending reset email")
+    } finally {
+      setForgotLoading(false)
+    }
   }
 
   return (
@@ -108,6 +139,7 @@ export default function LoginPage() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-3">
+          {error && <div className="text-red-500">{error}</div>}
           <div className="grid grid-cols-2 gap-3 w-full">
             <Button
               onClick={() => handleLogin("member")}
@@ -126,9 +158,13 @@ export default function LoginPage() {
             </Button>
           </div>
           <div className="text-center space-y-2">
-            <Link href="/auth/forgot-password" className="text-sm text-sacco-blue hover:underline">
+            <button
+              type="button"
+              className="text-sm text-sacco-blue hover:underline bg-transparent border-0"
+              onClick={() => setShowForgot(true)}
+            >
               Forgot your password?
-            </Link>
+            </button>
             <p className="text-sm text-muted-foreground">
               {"Don't have an account? "}
               <Link href="/auth/register" className="text-sacco-blue hover:underline">
@@ -138,6 +174,39 @@ export default function LoginPage() {
           </div>
         </CardFooter>
       </Card>
+      {/* Forgot Password Modal */}
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded shadow-lg w-full max-w-sm">
+            <h2 className="text-xl font-bold mb-2">Reset Password</h2>
+            <form onSubmit={handleForgotPassword} className="space-y-3">
+              <Input
+                type="email"
+                placeholder="Enter your email"
+                value={forgotEmail}
+                onChange={e => setForgotEmail(e.target.value)}
+                required
+              />
+              <Button type="submit" disabled={forgotLoading} className="w-full">
+                {forgotLoading ? "Sending..." : "Send Reset Link"}
+              </Button>
+              {forgotMsg && <div className="text-sm text-center text-sacco-blue">{forgotMsg}</div>}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full mt-2"
+                onClick={() => {
+                  setShowForgot(false)
+                  setForgotMsg("")
+                  setForgotEmail("")
+                }}
+              >
+                Cancel
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

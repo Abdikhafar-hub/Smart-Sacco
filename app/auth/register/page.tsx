@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Eye, EyeOff, Building2, Check, X, Home } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import axios from "axios"
 
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -21,10 +22,12 @@ export default function RegisterPage() {
     password: "",
     confirmPassword: "",
     role: "",
+    memberCode: "",
   })
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
+  const [error, setError] = useState("")
 
   const passwordRequirements = [
     { text: "At least 8 characters", met: formData.password.length >= 8 },
@@ -46,18 +49,40 @@ export default function RegisterPage() {
       })
       return
     }
-
+    if (formData.role !== "member") {
+      toast({
+        title: "Error",
+        description: "Only members can register. Admin registration is not allowed.",
+        variant: "destructive",
+      })
+      return
+    }
     setIsLoading(true)
-
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
+    setError("")
+    try {
+      await axios.post("http://localhost:5000/api/auth/register", {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone,
+        role: formData.role,
+        memberCode: formData.memberCode,
+      })
       toast({
         title: "Registration Successful",
         description: "Your account has been created successfully!",
       })
-      router.push("/auth/onboarding")
-    }, 2000)
+      router.push("/auth/login")
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Registration failed")
+      toast({
+        title: "Registration Failed",
+        description: err.response?.data?.message || "Registration failed",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -122,9 +147,18 @@ export default function RegisterPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="memberCode">Member Code</Label>
+            <Input
+              id="memberCode"
+              placeholder="Enter your member code"
+              value={formData.memberCode}
+              onChange={(e) => handleInputChange("memberCode", e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
@@ -182,6 +216,7 @@ export default function RegisterPage() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-3">
+          {error && <div className="text-red-500">{error}</div>}
           <Button
             onClick={handleRegister}
             disabled={isLoading}

@@ -91,6 +91,11 @@ export function SidebarNavigation({ role }: SidebarNavigationProps) {
           href: `/${role}/support`,
           icon: HelpCircle,
         },
+        {
+          title: "Documents",
+          href: `/${role}/documents`,
+          icon: FileText,
+        },
       )
     }
 

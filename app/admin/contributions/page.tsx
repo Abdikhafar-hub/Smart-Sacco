@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { StatsCard } from "@/components/ui/stats-card"
 import { ChartCard } from "@/components/ui/chart-card"
@@ -38,6 +38,25 @@ import {
   Smartphone,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import axios from "axios"
+
+interface Contribution {
+  _id: string
+  user: { name: string; email: string }
+  amount: number
+  date: string
+  status: string
+  method?: string
+  mpesaCode?: string
+  bankRef?: string
+  contributionType?: string
+  verifiedBy?: string
+  verifiedAt?: string
+  rejectedBy?: string
+  rejectedAt?: string
+  rejectionReason?: string
+  reference?: string
+}
 
 export default function AdminContributions() {
   const [selectedContribution, setSelectedContribution] = useState<any>(null)
@@ -51,13 +70,21 @@ export default function AdminContributions() {
     method: "",
     reference: "",
   })
-  const [verificationData, setVerificationData] = useState({
+  const [verificationData, setVerificationData] = useState<{
+    contributionId: string
+    action: "" | "verify" | "reject"
+    comments: string
+    adjustedAmount: string
+  }>({
     contributionId: "",
     action: "",
     comments: "",
     adjustedAmount: "",
   })
   const { toast } = useToast()
+  const [contributions, setContributions] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   const user = {
     name: "Admin User",
@@ -65,174 +92,128 @@ export default function AdminContributions() {
     role: "Admin",
   }
 
-  // Mock data for contribution statistics
-  const contributionStats = {
-    totalContributions: 2850000,
-    monthlyTarget: 500000,
-    monthlyActual: 425000,
-    pendingVerifications: 15,
-    totalMembers: 234,
-    activeContributors: 198,
-    averageContribution: 12180,
-    complianceRate: 84.6,
+  // Fetch all contributions from backend
+    const fetchContributions = async () => {
+      setLoading(true)
+      setError("")
+      try {
+        const token = localStorage.getItem("token")
+        const res = await axios.get("http://localhost:5000/api/contribution/all", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setContributions(res.data)
+      } catch (err) {
+        setError("Failed to load contributions")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+  useEffect(() => {
+    fetchContributions()
+  }, [])
+
+  // Approve/reject handlers
+  const handleVerification = async (id?: string, action?: "approve" | "reject", event?: React.MouseEvent) => {
+    if (event) event.preventDefault();
+    if (id && action) {
+      try {
+        const token = localStorage.getItem("token");
+        if (action === "approve") {
+          await axios.put(
+            `http://localhost:5000/api/contribution/approve/${id}`,
+            {},
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        } else if (action === "reject") {
+          await axios.put(
+            `http://localhost:5000/api/contribution/reject/${id}`,
+            { rejectionReason: "Rejected by admin" },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        }
+        fetchContributions();
+      } catch (err) {
+        setError(`Failed to ${action} contribution`)
+      }
+    }
   }
 
-  // Mock data for charts
-  const monthlyTrends = [
-    { name: "Jan", target: 450000, actual: 420000 },
-    { name: "Feb", target: 450000, actual: 465000 },
-    { name: "Mar", target: 500000, actual: 485000 },
-    { name: "Apr", target: 500000, actual: 520000 },
-    { name: "May", target: 500000, actual: 495000 },
-    { name: "Jun", target: 500000, actual: 425000 },
-  ]
+  // All calculations should use backend data
+  const totalContributions = contributions.filter(c => c.status === "Verified").reduce((sum, c) => sum + (c.amount || 0), 0)
+  const pendingVerifications = contributions.filter(c => c.status === "Pending").length
+  const activeContributors = new Set(contributions.filter(c => c.status === "Verified").map(c => c.user?._id || c.user)).size
+  const monthlyTarget = 500000 // or fetch from backend if dynamic
+  const currentMonth = new Date().getMonth()
+  const monthlyActual = contributions.filter(c => c.status === "Verified" && new Date(c.date).getMonth() === currentMonth).reduce((sum, c) => sum + (c.amount || 0), 0)
+  const monthlyProgress = monthlyTarget > 0 ? Math.round((monthlyActual / monthlyTarget) * 100) : 0
+  const averageContribution = contributions.filter(c => c.status === "Verified").length > 0
+    ? Math.round(totalContributions / contributions.filter(c => c.status === "Verified").length)
+    : 0
 
-  const contributionMethods = [
-    { name: "M-Pesa", value: 156 },
-    { name: "Bank Transfer", value: 42 },
-    { name: "Cash", value: 28 },
-    { name: "Check", value: 12 },
-  ]
+  // Example: Monthly trends (group by month)
+  const monthlyTrends = Array.from({ length: 6 }, (_, i) => {
+    const month = new Date().getMonth() - (5 - i)
+    const value = contributions
+      .filter(c => new Date(c.date).getMonth() === ((month + 12) % 12))
+      .reduce((sum, c) => sum + (c.amount || 0), 0)
+    return { name: new Date(0, (month + 12) % 12).toLocaleString('default', { month: 'short' }), value }
+  })
 
-  const memberCategories = [
-    { name: "Regular", value: 180 },
-    { name: "Premium", value: 35 },
-    { name: "Student", value: 19 },
-  ]
+  // Example: Contribution methods
+  const methodCounts: Record<string, number> = {}
+  contributions.forEach(c => {
+    const method = c.method || "Other"
+    methodCounts[method] = (methodCounts[method] || 0) + 1
+  })
+  const memberCategories = Object.entries(methodCounts).map(([name, value]) => ({ name, value }))
 
-  // Mock pending contributions for verification
-  const pendingContributions = [
+  // Table columns (customize as needed)
+  const columns = [
+    { key: "user", label: "Member", render: (v: any, row: any) => row.user?.name || "N/A" },
+    { key: "amount", label: "Amount", render: (v: number) => `KES ${v?.toLocaleString()}` },
+    { key: "method", label: "Method" },
+    { key: "status", label: "Status" },
+    { key: "date", label: "Date", render: (v: string) => v && !isNaN(Date.parse(v)) ? new Date(v).toLocaleString() : "N/A" },
     {
-      id: "TXN001",
-      member: "John Doe",
-      memberId: "MEM001",
-      amount: 5000,
-      method: "M-Pesa",
-      mpesaCode: "QA12345678",
-      phone: "+254712345678",
-      timestamp: "2024-01-15 14:30:00",
-      status: "Pending",
-      contributionType: "Monthly",
-      reference: "Monthly contribution - January 2024",
-    },
-    {
-      id: "TXN002",
-      member: "Jane Smith",
-      memberId: "MEM002",
-      amount: 3000,
-      method: "Bank Transfer",
-      bankRef: "BT789012345",
-      phone: "+254723456789",
-      timestamp: "2024-01-15 12:15:00",
-      status: "Pending",
-      contributionType: "Additional",
-      reference: "Additional savings contribution",
-    },
-    {
-      id: "TXN003",
-      member: "Mike Johnson",
-      memberId: "MEM003",
-      amount: 7500,
-      method: "M-Pesa",
-      mpesaCode: "QC11223344",
-      phone: "+254734567890",
-      timestamp: "2024-01-15 10:45:00",
-      status: "Pending",
-      contributionType: "Monthly",
-      reference: "Monthly contribution - January 2024",
-    },
-  ]
-
-  // Mock verified contributions
-  const verifiedContributions = [
-    {
-      id: "TXN004",
-      member: "Sarah Wilson",
-      memberId: "MEM004",
-      amount: 4500,
-      method: "M-Pesa",
-      mpesaCode: "QD55667788",
-      phone: "+254745678901",
-      timestamp: "2024-01-14 16:20:00",
-      verifiedBy: "Admin User",
-      verifiedAt: "2024-01-14 16:25:00",
-      status: "Verified",
-      contributionType: "Monthly",
-      reference: "Monthly contribution - January 2024",
-    },
-    {
-      id: "TXN005",
-      member: "David Brown",
-      memberId: "MEM005",
-      amount: 6000,
-      method: "Bank Transfer",
-      bankRef: "BT456789012",
-      phone: "+254756789012",
-      timestamp: "2024-01-14 14:10:00",
-      verifiedBy: "Admin User",
-      verifiedAt: "2024-01-14 14:15:00",
-      status: "Verified",
-      contributionType: "Monthly",
-      reference: "Monthly contribution - January 2024",
+      key: "actions",
+      label: "Actions",
+      render: (value: any, row: any) => (
+        <div className="flex space-x-2">
+          <Button size="sm" variant="outline" onClick={() => viewContributionDetails(row)}>
+            <Eye className="h-3 w-3 mr-1" />
+            View
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => handleVerification(row._id, "approve")}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Verify
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleVerification(row._id, "reject")}
+          >
+            <XCircle className="h-3 w-3 mr-1" />
+            Reject
+          </Button>
+        </div>
+      ),
     },
   ]
 
-  // Mock rejected contributions
-  const rejectedContributions = [
-    {
-      id: "TXN006",
-      member: "Lisa Davis",
-      memberId: "MEM006",
-      amount: 2500,
-      method: "M-Pesa",
-      mpesaCode: "QE99887766",
-      phone: "+254767890123",
-      timestamp: "2024-01-13 11:30:00",
-      rejectedBy: "Admin User",
-      rejectedAt: "2024-01-13 11:35:00",
-      status: "Rejected",
-      contributionType: "Monthly",
-      reference: "Monthly contribution - January 2024",
-      rejectionReason: "Duplicate transaction - already processed",
-    },
-  ]
+  const complianceRate = 0 // No logic yet, so always 0
 
-  // Mock member contribution summary
-  const memberContributions = [
-    {
-      memberId: "MEM001",
-      memberName: "John Doe",
-      monthlyTarget: 5000,
-      currentMonth: 5000,
-      totalContributions: 60000,
-      lastContribution: "2024-01-15",
-      status: "Current",
-      complianceRate: 100,
-      contributionHistory: 12,
-    },
-    {
-      memberId: "MEM002",
-      memberName: "Jane Smith",
-      monthlyTarget: 3000,
-      currentMonth: 3000,
-      totalContributions: 36000,
-      lastContribution: "2024-01-15",
-      status: "Current",
-      complianceRate: 100,
-      contributionHistory: 12,
-    },
-    {
-      memberId: "MEM003",
-      memberName: "Mike Johnson",
-      monthlyTarget: 7500,
-      currentMonth: 0,
-      totalContributions: 82500,
-      lastContribution: "2023-12-15",
-      status: "Overdue",
-      complianceRate: 91.7,
-      contributionHistory: 11,
-    },
-  ]
+  if (loading) return <div>Loading...</div>
+  if (error) return <div className="text-red-500">{error}</div>
+
+  // Filter contributions by status
+  const pendingContributions = contributions.filter(c => c.status === "Pending")
+  const verifiedContributions = contributions.filter(c => c.status === "Verified")
+  const rejectedContributions = contributions.filter(c => c.status === "Rejected")
 
   const pendingColumns = [
     {
@@ -315,13 +296,17 @@ export default function AdminContributions() {
           </Button>
           <Button
             size="sm"
-            onClick={() => openVerificationDialog(row, "verify")}
+            onClick={() => handleVerification(row._id, "approve")}
             className="bg-green-600 hover:bg-green-700"
           >
             <CheckCircle className="h-3 w-3 mr-1" />
             Verify
           </Button>
-          <Button size="sm" variant="destructive" onClick={() => openVerificationDialog(row, "reject")}>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleVerification(row._id, "reject")}
+          >
             <XCircle className="h-3 w-3 mr-1" />
             Reject
           </Button>
@@ -511,25 +496,14 @@ export default function AdminContributions() {
     setIsDetailsOpen(true)
   }
 
-  const openVerificationDialog = (contribution: any, action: string) => {
+  const openVerificationDialog = (contribution: any, action: "verify" | "reject") => {
     setVerificationData({
-      contributionId: contribution.id,
+      contributionId: contribution._id,
       action,
       comments: "",
       adjustedAmount: contribution.amount.toString(),
     })
     setIsVerificationOpen(true)
-  }
-
-  const handleVerification = () => {
-    const actionText = verificationData.action === "verify" ? "verified" : "rejected"
-    toast({
-      title: `Contribution ${actionText.charAt(0).toUpperCase() + actionText.slice(1)}`,
-      description: `Contribution ${verificationData.contributionId} has been ${actionText}`,
-      variant: verificationData.action === "verify" ? "default" : "destructive",
-    })
-    setIsVerificationOpen(false)
-    setVerificationData({ contributionId: "", action: "", comments: "", adjustedAmount: "" })
   }
 
   const bulkVerify = () => {
@@ -576,13 +550,42 @@ export default function AdminContributions() {
     setIsBulkUploadOpen(false)
   }
 
-  const handleManualEntry = () => {
+  const handleManualEntry = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      // Send the new contribution to the backend
+      await axios.post(
+        "http://localhost:5000/api/contribution",
+        {
+          memberId: manualEntryData.memberId,
+          amount: Number(manualEntryData.amount),
+          method: manualEntryData.method,
+          reference: manualEntryData.reference,
+          // Add other fields as needed
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
     toast({
       title: "Manual Entry Added",
       description: `Contribution of KES ${manualEntryData.amount} has been added for member ${manualEntryData.memberId}`,
     })
     setIsManualEntryOpen(false)
     setManualEntryData({ memberId: "", amount: "", method: "", reference: "" })
+      // Refresh contributions
+      setLoading(true)
+      const res = await axios.get("http://localhost:5000/api/contribution/all", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setContributions(res.data)
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to add manual contribution",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleGenerateReport = () => {
@@ -636,28 +639,45 @@ export default function AdminContributions() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatsCard
             title="Total Contributions"
-            value={`KES ${(contributionStats.totalContributions / 1000000).toFixed(1)}M`}
+            value={`KES ${(totalContributions / 1_000_000).toFixed(1)}M`}
             description="All time contributions"
-            icon={DollarSign}
-            trend={{ value: 12.5, isPositive: true }}
+            icon={CreditCard}
           />
           <StatsCard
             title="Monthly Progress"
-            value={`${Math.round((contributionStats.monthlyActual / contributionStats.monthlyTarget) * 100)}%`}
-            description={`KES ${contributionStats.monthlyActual.toLocaleString()} of ${contributionStats.monthlyTarget.toLocaleString()}`}
+            value={`${monthlyProgress}%`}
+            description={`KES ${monthlyActual.toLocaleString()} of ${monthlyTarget.toLocaleString()}`}
             icon={TrendingUp}
           />
           <StatsCard
             title="Pending Verifications"
-            value={contributionStats.pendingVerifications.toString()}
+            value={pendingVerifications}
             description="Awaiting verification"
-            icon={Clock}
+            icon={AlertTriangle}
           />
           <StatsCard
             title="Active Contributors"
-            value={`${contributionStats.activeContributors}/${contributionStats.totalMembers}`}
-            description={`${Math.round((contributionStats.activeContributors / contributionStats.totalMembers) * 100)}% participation`}
+            value={activeContributors}
+            description="This month"
+            icon={DollarSign}
+          />
+          <StatsCard
+            title="Average Contribution"
+            value={`KES ${averageContribution.toLocaleString()}`}
+            description="Per member per month"
             icon={CreditCard}
+          />
+          <StatsCard
+            title="Compliance Rate"
+            value={`${complianceRate}%`}
+            description="Members meeting targets"
+            icon={CheckCircle}
+          />
+          <StatsCard
+            title="Monthly Target"
+            value={`KES ${monthlyTarget.toLocaleString()}`}
+            description="Current month target"
+            icon={TrendingUp}
           />
         </div>
 
@@ -669,13 +689,9 @@ export default function AdminContributions() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-sacco-blue">
-                KES {contributionStats.averageContribution.toLocaleString()}
+                KES {averageContribution.toLocaleString()}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Per member per month</p>
-              <div className="flex items-center mt-2">
-                <TrendingUp className="h-4 w-4 text-green-600 mr-1" />
-                <span className="text-sm text-green-600">+8% from last month</span>
-              </div>
             </CardContent>
           </Card>
           <Card>
@@ -683,9 +699,9 @@ export default function AdminContributions() {
               <CardTitle className="text-lg">Compliance Rate</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-sacco-green">{contributionStats.complianceRate}%</div>
+              <div className="text-2xl font-bold text-sacco-green">84.6%</div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Members meeting targets</p>
-              <Progress value={contributionStats.complianceRate} className="mt-2" />
+              <Progress value={84.6} className="mt-2" />
             </CardContent>
           </Card>
           <Card>
@@ -694,15 +710,15 @@ export default function AdminContributions() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                KES {contributionStats.monthlyTarget.toLocaleString()}
+                KES {monthlyTarget.toLocaleString()}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Current month target</p>
               <div className="mt-2">
                 <div className="flex justify-between text-sm mb-1">
                   <span>Progress</span>
-                  <span>{Math.round((contributionStats.monthlyActual / contributionStats.monthlyTarget) * 100)}%</span>
+                  <span>{monthlyProgress}%</span>
                 </div>
-                <Progress value={(contributionStats.monthlyActual / contributionStats.monthlyTarget) * 100} />
+                <Progress value={monthlyProgress} />
               </div>
             </CardContent>
           </Card>
@@ -719,28 +735,18 @@ export default function AdminContributions() {
                 <ChartCard
                   title=""
                   type="line"
-                  data={monthlyTrends.map((item) => ({
-                    name: item.name,
-                    Target: item.target,
-                    Actual: item.actual,
-                  }))}
-                  dataKey="Actual"
+                  data={monthlyTrends}
+                  dataKey="value"
                   xAxisKey="name"
                 />
               </div>
             </CardContent>
           </Card>
-          <ChartCard
-            title="Contribution Methods"
-            description="Distribution by payment method"
-            type="pie"
-            data={contributionMethods}
-            dataKey="value"
-            xAxisKey="name"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Member Categories</CardTitle>
+            </CardHeader>
+            <CardContent>
           <ChartCard
             title="Member Categories"
             description="Distribution by membership type"
@@ -749,6 +755,16 @@ export default function AdminContributions() {
             dataKey="value"
             xAxisKey="name"
           />
+              {memberCategories.length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  No data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Quick Actions</CardTitle>
@@ -759,7 +775,7 @@ export default function AdminContributions() {
                   <Mail className="h-4 w-4 mr-2" />
                   Send Contribution Reminders
                 </div>
-                <span className="text-sm">3 overdue</span>
+                <span className="text-sm">0 overdue</span>
               </Button>
               <Button variant="outline" className="w-full justify-between">
                 <div className="flex items-center">
@@ -888,7 +904,7 @@ export default function AdminContributions() {
               </div>
             </div>
             <DataTable
-              data={memberContributions}
+              data={contributions}
               columns={memberSummaryColumns}
               searchable={true}
               filterable={true}
@@ -901,7 +917,7 @@ export default function AdminContributions() {
         <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Contribution Details - {selectedContribution?.id}</DialogTitle>
+              <DialogTitle>Contribution Details - {selectedContribution?._id}</DialogTitle>
               <DialogDescription>Complete contribution information and verification details</DialogDescription>
             </DialogHeader>
             {selectedContribution && (
@@ -912,7 +928,7 @@ export default function AdminContributions() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Transaction ID:</span>
-                        <span className="font-medium">{selectedContribution.id}</span>
+                        <span className="font-medium">{selectedContribution._id}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Amount:</span>
@@ -939,19 +955,15 @@ export default function AdminContributions() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Name:</span>
-                        <span className="font-medium">{selectedContribution.member}</span>
+                        <span className="font-medium">{selectedContribution.user?.name}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Member ID:</span>
-                        <span className="font-medium">{selectedContribution.memberId}</span>
+                        <span>Email:</span>
+                        <span className="font-medium">{selectedContribution.user?.email}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Phone:</span>
-                        <span className="font-medium">{selectedContribution.phone}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Timestamp:</span>
-                        <span className="font-medium">{new Date(selectedContribution.timestamp).toLocaleString()}</span>
+                        <span>Date:</span>
+                        <span className="font-medium">{new Date(selectedContribution.date).toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
@@ -1045,7 +1057,7 @@ export default function AdminContributions() {
                 Cancel
               </Button>
               <Button
-                onClick={handleVerification}
+                onClick={() => handleVerification()}
                 className={
                   verificationData.action === "verify"
                     ? "bg-green-600 hover:bg-green-700"
